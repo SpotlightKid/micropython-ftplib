@@ -251,11 +251,7 @@ class FTP:
             print('*get*', self.sanitize(line))
         if not line:
             raise EOFError
-        if line[-2:] == CRLF:
-            line = line[:-2]
-        elif line[-1:] in CRLF:
-            line = line[:-1]
-        return line
+        return line.rstrip('\r\n')
 
     # Internal: get a response from the server, which may possibly
     # consist of multiple lines.  Return a single string with no
@@ -292,7 +288,7 @@ class FTP:
     def voidresp(self):
         """Expect a response beginning with '2'."""
         resp = self.getresp()
-        if resp[:1] != '2':
+        if not resp.startswith('2'):
             raise error_reply(resp)
         return resp
 
@@ -802,12 +798,10 @@ class FTP:
 
 def _find_parentheses(s):
     left = s.find('(')
-
     if left < 0:
         raise ValueError("missing left delimiter")
 
     right = s.find(')', left + 1)
-
     if right < 0:
         # string should contain '(...)'
         raise ValueError("missing right delimiter")
@@ -821,9 +815,6 @@ def parse150(resp):
     Returns the expected transfer size or None; size is not guaranteed to be
     present in the 150 message.
     """
-    if resp[:3] != '150':
-        raise error_reply(resp)
-
     try:
         left, right = _find_parentheses(resp)
     except ValueError:
@@ -843,8 +834,8 @@ def parse227(resp):
 
     Return ('host.addr.as.numbers', port#) tuple.
     """
-    if resp[:3] != '227':
-        raise error_reply(resp)
+    if not resp.startswith('227'):
+        raise error_reply("Unexpected response: %s" % resp)
 
     try:
         left, right = _find_parentheses(resp)
@@ -864,8 +855,8 @@ def parse229(resp, peer):
 
     Return ('host.addr.as.numbers', port#) tuple.
     """
-    if resp[:3] != '229':
-        raise error_reply(resp)
+    if not resp.startswith('229'):
+        raise error_reply("Unexpected response: %s" % resp)
 
     try:
         left, right = _find_parentheses(resp)
@@ -889,12 +880,11 @@ def parse257(resp):
 
     This is a response to a MKD or PWD request: a directory name.
 
-    Returns the directoryname in the 257 reply.
+    Returns the directory name in the 257 reply.
     """
-    if resp[:3] != '257':
-        raise error_reply(resp)
     if resp[3:5] != ' "':
-        return ''  # Not compliant to RFC 959, but UNIX ftpd does this
+        # Not compliant to RFC 959, but UNIX ftpd does this
+        return ''
 
     dirname = ''
     i = 5
