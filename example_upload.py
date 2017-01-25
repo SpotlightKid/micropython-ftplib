@@ -27,8 +27,9 @@ if __name__ == '__main__':
         print("Usage: example_upload.py <hostname> <file> [<remote name>]")
         sys.exit(2)
 
-    ftp = ftplib.FTP()
-    ftp.connect(sys.argv[1])
-    ftp.set_debuglevel(1)
-    ftp.login()
-    upload(ftp, sys.argv[2], sys.argv[3] if len(sys.argv) >= 4 else None)
+    with ftplib.FTP() as ftp:
+        ftp.connect(*sys.argv[1].split(':'))
+        ftp.set_debuglevel(1)
+        ftp.login()
+        #ftp.set_pasv(False)
+        upload(ftp, sys.argv[2], sys.argv[3] if len(sys.argv) >= 4 else None)
