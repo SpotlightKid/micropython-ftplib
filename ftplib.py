@@ -33,8 +33,10 @@ Example::
 # Modified by Giampaolo Rodola' to add TLS support.
 # Modified, stripped down and cleaned up by Christopher Arndt for MicroPython
 
-import socket
-from socket import _GLOBAL_DEFAULT_TIMEOUT
+try:
+    import usocket as _socket
+except ImportError:
+    import socket as _socket
 
 __all__ = (
     "Error",
@@ -57,6 +59,7 @@ CRLF = '\r\n'
 B_CRLF = b'\r\n'
 MIN_PORT = 40001
 MAX_PORT = 40100
+_GLOBAL_DEFAULT_TIMEOUT = object()
 # For compatibility with CPython version with SSL support
 _SSLSocket = None
 
@@ -87,20 +90,82 @@ class error_proto(Error):
     pass
 
 
+def _resolve_addr(addr):
+    if isinstance(addr, (bytes, bytearray)):
+        return addr
+
+    family = _socket.AF_INET
+
+    if len(addr) != 2:
+        family = _socket.AF_INET6
+
+    if not addr[0]:
+        host = "127.0.0.1" if family == _socket.AF_INET else "::1"
+    else:
+        host = addr[0]
+
+    return _socket.getaddrinfo(host, addr[1], family)
+
+
+if getattr(_socket, 'SocketType', None):
+    socket = _socket.socket
+else:
+    class socket:
+        def __init__(self, *args, **kw):
+            if args and isinstance(args[0], _socket.socket):
+                self._sock = args[0]
+            else:
+                self._sock = _socket.socket(*args, **kw)
+
+        def accept(self):
+            s, addr = self._sock.accept()
+            return self.__class__(s), addr
+
+        def bind(self, addr):
+            return self._sock.bind(_resolve_addr(addr))
+
+        def connect(self, addr):
+            return self._sock.connect(_resolve_addr(addr))
+
+        def sendall(self, *args):
+            return self._sock.send(*args)
+
+        def __getattr__(self, name):
+            return getattr(self._sock, name)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self._sock.close()
+
+
 # The main class itself
 class FTP:
     """An FTP client class.
 
     To create a connection, call the class using these arguments::
 
-            host, user, passwd, acct, timeout
+            host, port, user, passwd, acct, timeout, source_address
 
-    The first four arguments are all strings, and have default value ''.
-    timeout must be numeric and defaults to None if not passed, meaning that no
-    timeout will be set on any ftp socket(s). If a timeout is passed, then this
-    is now the default timeout for all ftp socket operations for this instance.
+    The host, user, passwd and acct arguments are all strings, while port is an
+    integer. The default value for all is None, which means the following
+    defaults will be used: host: localhost, port: 21, user: 'anonymous',
+    passwd: anonymous@', acct: ''
 
-    Then use self.connect() with optional host and port argument.
+    timeout must be numeric and also defaults to None, meaning that no timeout
+    will be set on any ftp socket(s). If a timeout is passed, then this is now
+    the default timeout for all ftp socket operations for this instance.
+
+    If supplied, source_address must be a 2-tuple (host, port) for all sockets
+    created by this instance to bind to as their source address before
+    connecting.
+
+    If you pass a host name or address to the constructor, the 'connect' method
+    will be called directly with the host and port given. Otherwise use
+    'connect' later, optionally passing host and port arguments. If you also
+    pass a non-empty value for user, the 'login' method will be called with
+    user, passwd and acct given after calling 'connect'.
 
     To download a file, use ftp.retrlines('RETR ' + filename), or
     ftp.retrbinary() with slightly different arguments. To upload a file, use
@@ -109,12 +174,13 @@ class FTP:
 
     The download/upload functions first issue appropriate TYPE and PORT or PASV
     commands.
-
     """
 
     debugging = 0
-    host = ''
+    host = None
     port = FTP_PORT
+    timeout = _GLOBAL_DEFAULT_TIMEOUT
+    source_address = None
     maxline = MAXLINE
     sock = None
     file = None
@@ -122,19 +188,22 @@ class FTP:
     passiveserver = 1
     encoding = "latin-1"
 
-    def __init__(self, host='', user='', passwd='', acct='',
+    def __init__(self, host=None, port=None, user=None, passwd=None, acct=None,
                  timeout=_GLOBAL_DEFAULT_TIMEOUT, source_address=None):
         """Initialization method (called by class instantiation).
 
-        Initialize host to localhost, port to standard ftp port.
-
-        Optional arguments are host (for connect()), and user, passwd,
-        acct (for login()).
+        See class docstring for supported arguments.
         """
-        self.source_address = source_address
-        self.timeout = timeout
+        # These two settings are not tied to the connection, so if they are
+        # given, we override the defaults, regardless of whether an initial
+        # host to conenct to has been given or not.
+        if timeout is not None:
+            self.timeout = timeout
+        if source_address:
+            self.source_address = source_address
+
         if host:
-            self.connect(host)
+            self.connect(host, port)
             if user:
                 self.login(user, passwd, acct)
 
@@ -153,41 +222,48 @@ class FTP:
                     self.close()
 
     def _create_connection(self, addr, timeout=None, source_address=None):
-        sock = socket.socket()
-        ais = socket.getaddrinfo(addr[0], addr[1])
-        for ai in ais:
+        sock = socket()
+        addrinfos = _resolve_addr(addr)
+        for af, _, _, _, addr in addrinfos:
             try:
-                sock.connect(ai[4])
-            except:
-                pass
+                sock.connect(addr)
+            except Exception as exc:
+                if self.debugging:
+                    print(exc)
             else:
-                self.af = ai[0]
+                if timeout and timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                try:
+                    sock.family = af
+                except:
+                    pass
                 return sock
         else:
             raise Error("Could not connect to %r" % (addr,))
 
-    def connect(self, host='', port=None, timeout=None, source_address=None):
+    def connect(self, host=None, port=None, timeout=None, source_address=None):
         """Connect to host.
 
         Arguments are:
-         - host: hostname to connect to (string, default previous host)
-         - port: port to connect to (integer, default previous port)
-         - timeout: the timeout to set against the ftp socket(s)
-         - source_address: a 2-tuple (host, port) for the socket to bind
-           to as its source address before connecting.
+
+        - host: hostname to connect to (string, default previous host)
+        - port: port to connect to (integer, default previous port)
+        - timeout: the timeout for *this connection's* socket
+        - source_address: a 2-tuple (host, port) for *this connection's*
+          socket to bind to as its source address before connecting.
         """
-        if host != '':
+        if host:
             self.host = host
         if port:
             self.port = port
-        if timeout is not None:
-            self.timeout = timeout
-        if source_address is not None:
-            self.source_address = source_address
-        self.sock = self._create_connection(
-            (self.host, self.port),
-            self.timeout,
-            source_address=self.source_address)
+        if timeout is None:
+            timeout = self.timeout
+        if not source_address:
+            source_address = self.source_address
+
+        self.sock = self._create_connection((self.host, self.port), timeout,
+                                            source_address)
+        self.af = self.sock.family
         self.file = self.sock.makefile('r')
         self.welcome = self.getresp()
         return self.welcome
@@ -205,6 +281,7 @@ class FTP:
         """Set the debugging level.
 
         The required argument level means:
+
         0: no debugging output (default)
         1: print commands and responses but not body text etc.
         2: also print raw lines read and sent before stripping CR/LF
@@ -215,8 +292,8 @@ class FTP:
     def set_pasv(self, val=True):
         """Use passive or active mode for data transfers.
 
-        With a false argument, use the normal PORT mode,
-        With a true argument (the default), use the PASV command.
+        With a false argument, use the normal PORT mode,w ith a true argument
+        (the default), use the PASV command.
         """
         self.passiveserver = val
 
@@ -275,8 +352,10 @@ class FTP:
         resp = self.getmultiline()
         if self.debugging:
             print('*resp*', self.sanitize(resp))
+
         self.lastresp = resp[:3]
         c = resp[:1]
+
         if c in {'1', '2', '3'}:
             return resp
         if c == '4':
@@ -304,10 +383,13 @@ class FTP:
         line = b'ABOR' + B_CRLF
         if self.debugging > 1:
             print('*put urgent*', self.sanitize(line))
+
         self.sock.sendall(line, MSG_OOB)
         resp = self.getmultiline()
+
         if resp[:3] not in {'426', '225', '226'}:
             raise error_proto(resp)
+
         return resp
 
     def sendcmd(self, cmd):
@@ -332,9 +414,9 @@ class FTP:
     def sendeprt(self, host, port):
         """Send an EPRT command with current host and given port number."""
         af = 0
-        if self.af == socket.AF_INET:
+        if self.af == _socket.AF_INET:
             af = 1
-        if self.af == socket.AF_INET6:
+        if self.af == _socket.AF_INET6:
             af = 2
         if af == 0:
             raise error_proto('unsupported address family')
@@ -346,30 +428,48 @@ class FTP:
         """Create a new socket and send a PORT command for it."""
         err = None
         sock = None
-        host = "127.0.0.1" if self.af == socket.AF_INET else "::1"
+
+        if self.source_address and self.source_address[0]:
+            host = self.source_address[0]
+        else:
+            # XXX: this will only work for connections to a server on the same
+            #      host! socket.getsocketname() would be needed find out the
+            #      correct socket address to report to the server
+            host = "127.0.0.1" if self.af == _socket.AF_INET else "::1"
 
         for port in range(MIN_PORT, MAX_PORT):
-            addrinfo = socket.getaddrinfo(host, port, self.af)
+            addrinfo = _socket.getaddrinfo(host, port, self.af)
 
-            for res in addrinfo:
-                af, socktype, proto, canonname, sa = res
-                if af == self.af and socktype == socket.SOCK_STREAM:
+            for af, socktype, proto, _, addr in addrinfo:
+                if af == self.af and socktype == _socket.SOCK_STREAM:
                     try:
-                        sock = socket.socket(af, socktype, proto)
-                        sock.bind(('', port))
+                        sock = socket(af, socktype, proto)
+                        sock.bind(addr)
                     except OSError as _:
                         err = _
-                        print(err)
                         if sock:
                             sock.close()
                         sock = None
                         continue
                     else:
-                        if isinstance(sa, tuple):
-                            host = sa[0]
+                        try:
+                            sock.family = af
+                        except:
+                            pass
+
+                        if isinstance(addr, tuple):
+                            host = addr[0]
                         else:
-                            host = socket.inet_ntop(af, sa[4:8])
+                            try:
+                                # XXX: socket.inet_ntop() is not supported on
+                                # all MciroPython ports!
+                                host = _socket.inet_ntop(af, addr[4:8])
+                            except:
+                                pass
                         break
+
+            if sock:
+                break
 
         if sock is None:
             if err is not None:
@@ -379,7 +479,7 @@ class FTP:
 
         sock.listen(1)
 
-        if self.af == socket.AF_INET:
+        if self.af == _socket.AF_INET:
             self.sendport(host, port)
         else:
             self.sendeprt(host, port)
@@ -390,11 +490,15 @@ class FTP:
         return sock
 
     def makepasv(self):
-        if self.af == socket.AF_INET:
+        if self.af == _socket.AF_INET:
             host, port = parse227(self.sendcmd('PASV'))
         else:
-            host, port = parse229(self.sendcmd('EPSV'),
-                                  self.sock.getpeername())
+            port = parse229(self.sendcmd('EPSV'))
+            try:
+                host = self.sock.getpeername()
+            except AttributeError:
+                # XXX: getpeername() is not supported by usocket!
+                host = self.host
 
         return host, port
 
@@ -414,8 +518,8 @@ class FTP:
         size = None
         if self.passiveserver:
             host, port = self.makepasv()
-            conn = socket.create_connection((host, port), self.timeout,
-                                            source_address=self.source_address)
+            conn = self._create_connection((host, port), self.timeout,
+                                           self.source_address)
             try:
                 if rest is not None:
                     self.sendcmd("REST %s" % rest)
@@ -429,6 +533,7 @@ class FTP:
                 # this response.
                 if resp[0] == '2':
                     resp = self.getresp()
+
                 if resp[0] != '1':
                     raise error_reply(resp)
             except:
@@ -445,16 +550,17 @@ class FTP:
                 # See above.
                 if resp[0] == '2':
                     resp = self.getresp()
+
                 if resp[0] != '1':
                     raise error_reply(resp)
 
-                conn, sockaddr = sock.accept()
+                conn, _ = sock.accept()
                 if self.timeout is not _GLOBAL_DEFAULT_TIMEOUT:
                     conn.settimeout(self.timeout)
             finally:
                 sock.close()
 
-        if resp[:3] == '150':
+        if resp.startswith('150'):
             # this is conditional in case we received a 125
             size = parse150(resp)
 
@@ -473,15 +579,15 @@ class FTP:
         if not acct:
             acct = ''
 
-        if user == 'anonymous' and passwd in {'', '-'}:
+        if user == 'anonymous' and passwd in ('', '-'):
             # If there is no anonymous ftp password specified
-            # then we'll just use anonymous@
+            # then we'll just use 'anonymous@'
             # We don't send any other thing because:
             # - We want to remain anonymous
             # - We want to stop SPAM
             # - We don't want to let ftp sites to discriminate by the user,
             #   host or country.
-            passwd = passwd + 'anonymous@'
+            passwd = 'anonymous@'
 
         resp = self.sendcmd('USER ' + user)
 
@@ -513,10 +619,7 @@ class FTP:
           The response code.
         """
         self.voidcmd('TYPE I')
-        conn = None
-
-        try:
-            conn = self.transfercmd(cmd, rest)
+        with self.transfercmd(cmd, rest) as conn:
             while 1:
                 data = conn.recv(blocksize)
                 if not data:
@@ -526,9 +629,6 @@ class FTP:
             # shutdown ssl layer
             if _SSLSocket is not None and isinstance(conn, _SSLSocket):
                 conn.unwrap()
-        finally:
-            if conn:
-                conn.close()
 
         return self.voidresp()
 
@@ -550,10 +650,8 @@ class FTP:
             callback = print
 
         self.sendcmd('TYPE A')
-        conn = None
 
-        try:
-            conn = self.transfercmd(cmd)
+        with self.transfercmd(cmd) as conn:
             with conn.makefile('r') as fp:
                 while 1:
                     line = fp.readline(self.maxline + 1)
@@ -577,9 +675,6 @@ class FTP:
                 # shutdown ssl layer
                 if _SSLSocket is not None and isinstance(conn, _SSLSocket):
                     conn.unwrap()
-        finally:
-            if conn:
-                conn.close()
 
         return self.voidresp()
 
@@ -601,21 +696,19 @@ class FTP:
           The response code.
         """
         self.voidcmd('TYPE I')
-        conn = self.transfercmd(cmd, rest)
-
-        try:
+        with self.transfercmd(cmd, rest) as conn:
             while 1:
                 buf = fp.read(blocksize)
                 if not buf:
                     break
+
                 conn.sendall(buf)
                 if callback:
                     callback(buf)
+
             # shutdown ssl layer
             if _SSLSocket is not None and isinstance(conn, _SSLSocket):
                 conn.unwrap()
-        finally:
-            conn.close()
 
         return self.voidresp()
 
@@ -634,9 +727,7 @@ class FTP:
           The response code.
         """
         self.voidcmd('TYPE A')
-        conn = self.transfercmd(cmd)
-
-        try:
+        with self.transfercmd(cmd) as conn:
             while 1:
                 buf = fp.readline(self.maxline + 1)
                 if len(buf) > self.maxline:
@@ -653,8 +744,6 @@ class FTP:
             # shutdown ssl layer
             if _SSLSocket is not None and isinstance(conn, _SSLSocket):
                 conn.unwrap()
-        finally:
-            conn.close()
 
         return self.voidresp()
 
@@ -848,12 +937,12 @@ def parse227(resp):
     return host, port
 
 
-def parse229(resp, peer):
+def parse229(resp):
     """Parse the '229' response for an EPSV request.
 
     Raises error_proto if it does not contain '(|||port|)'
 
-    Return ('host.addr.as.numbers', port#) tuple.
+    Return port number as integer.
     """
     if not resp.startswith('229'):
         raise error_reply("Unexpected response: %s" % resp)
@@ -870,9 +959,7 @@ def parse229(resp, peer):
     except ValueError as exc:
         raise error_proto("Error parsing response '%s': %s" % (resp, exc))
 
-    host = peer[0]
-    port = int(parts[3])
-    return host, port
+    return int(parts[3])
 
 
 def parse257(resp):
