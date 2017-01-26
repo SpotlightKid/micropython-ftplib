@@ -462,7 +462,7 @@ class FTP:
                         else:
                             try:
                                 # XXX: socket.inet_ntop() is not supported on
-                                # all MciroPython ports!
+                                # all MicroPython ports!
                                 host = _socket.inet_ntop(af, addr[4:8])
                             except:
                                 pass
