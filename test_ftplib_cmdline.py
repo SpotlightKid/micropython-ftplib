@@ -34,12 +34,6 @@ def ftpcmd(*args):
         del args[0]
 
     host = args.pop(0)
-    if ':' in host:
-        host, port = host.rsplit(':', 1)
-        port = int(port)
-    else:
-        port = None
-
     try:
         userid, host = host.split('@', 1)
     except:
@@ -51,6 +45,12 @@ def ftpcmd(*args):
             userid, passwd = userid.split(':')
         except:
             passwd = ''
+
+    if ':' in host:
+        host, port = host.rsplit(':', 1)
+        port = int(port)
+    else:
+        port = None
 
     ftp = ftplib.FTP()
     ftp.set_debuglevel(debugging)
