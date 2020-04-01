@@ -34,7 +34,7 @@ Example::
 # Modified, stripped down and cleaned up by Christopher Arndt for MicroPython
 
 import usocket as _socket
-
+import ssl as _ssl
 # Magic number from <socket.h>
 # Process data out of band
 MSG_OOB = 0x1
@@ -173,10 +173,12 @@ class FTP:
                     self.close()
 
     def _create_connection(self, addr, timeout=None, source_address=None):
+        
         sock = socket()
         addrinfos = _resolve_addr(addr)
         for af, _, _, _, addr in addrinfos:
             try:
+                print("creating connection to", addr)
                 sock.connect(addr)
             except Exception as exc:
                 print(exc)
@@ -249,6 +251,7 @@ class FTP:
     def getresp(self):
         resp = self.getmultiline()
         self.lastresp = resp[:3]
+        #print(resp)
         if resp[:1] in ('1', '2', '3'):
             return resp
         raise Error(resp)
@@ -285,6 +288,7 @@ class FTP:
 
     def voidcmd(self, cmd):
         """Send a command and expect a response beginning with '2'."""
+        
         self.sock.sendall(cmd.encode(self.encoding) + CRLF)
         return self.voidresp()
 
@@ -431,7 +435,6 @@ class FTP:
             try:
                 if rest is not None:
                     self.sendcmd("REST %s" % rest)
-
                 resp = self.sendcmd(cmd)
                 # See above.
                 if resp[0] == '2':
@@ -445,11 +448,9 @@ class FTP:
                     conn.settimeout(self.timeout)
             finally:
                 sock.close()
-
         if resp.startswith('150'):
             # this is conditional in case we received a 125
             size = parse150(resp)
-
         return conn, size
 
     def login(self, user='', passwd='', acct=''):
@@ -671,6 +672,126 @@ class FTP:
                 sock.close()
 
 
+
+
+class FTP_TLS(FTP):
+    '''A FTP subclass which adds TLS support to FTP as described
+    in RFC-4217.
+    Connect as usual to port 21 implicitly securing the FTP control
+    connection before authenticating.
+    Securing the data connection requires user to explicitly ask
+    for it by calling prot_p() method.
+    Usage example:
+    >>> from ftplib import FTP_TLS
+    >>> ftps = FTP_TLS('ftp.python.org')
+    >>> ftps.login()  # login anonymously previously securing control channel
+    '230 Guest login ok, access restrictions apply.'
+    >>> ftps.prot_p()  # switch to secure data connection
+    '200 Protection level set to P'
+    >>> ftps.retrlines('LIST')  # list directory content securely
+    total 9
+    drwxr-xr-x   8 root     wheel        1024 Jan  3  1994 .
+    drwxr-xr-x   8 root     wheel        1024 Jan  3  1994 ..
+    drwxr-xr-x   2 root     wheel        1024 Jan  3  1994 bin
+    drwxr-xr-x   2 root     wheel        1024 Jan  3  1994 etc
+    d-wxrwxr-x   2 ftp      wheel        1024 Sep  5 13:43 incoming
+    drwxr-xr-x   2 root     wheel        1024 Nov 17  1993 lib
+    drwxr-xr-x   6 1094     wheel        1024 Sep 13 19:07 pub
+    drwxr-xr-x   3 root     wheel        1024 Jan  3  1994 usr
+    -rw-r--r--   1 root     root          312 Aug  1  1994 welcome.msg
+    '226 Transfer complete.'
+    >>> ftps.quit()
+    '221 Goodbye.'
+    >>>
+    '''
+    
+    def __init__(self, host='', user='', passwd='', acct='', keyfile=None,
+                    certfile=None, context=None,
+                    timeout=_GLOBAL_DEFAULT_TIMEOUT, source_address=None):
+        if context is not None and keyfile is not None:
+            raise ValueError("context and keyfile arguments are mutually "
+                                "exclusive")
+        if context is not None and certfile is not None:
+            raise ValueError("context and certfile arguments are mutually "
+                                "exclusive")
+        if keyfile is not None or certfile is not None:
+            import warnings
+            warnings.warn("keyfile and certfile are deprecated, use a "
+                            "custom context instead", DeprecationWarning, 2)
+        self.keyfile = keyfile
+        self.certfile = certfile
+        #if context is None:
+        #    context = ssl._create_stdlib_context(self.ssl_version,
+        #                                            certfile=certfile,
+        #                                            keyfile=keyfile)
+        #self.context = context
+        self._prot_p = True #modified it to true
+        secure = True
+        super().__init__(host, user, passwd, acct, timeout, source_address)
+
+    def login(self, user='', passwd='', acct='', secure=True):
+        if secure and isinstance(self.sock._sock, _socket.socket):
+            print("socket unsecured, authenticating")
+            self.auth()
+        return super().login(user, passwd, acct)
+
+    def auth(self):
+        '''Set up secure control connection by using TLS/SSL.'''
+        if not isinstance(self.sock._sock, _socket.socket):
+            raise ValueError("Already using TLS")
+        resp = self.voidcmd('AUTH TLS')
+        print("response of AUTH TLS is", resp)
+        self.sock._sock = _ssl.wrap_socket(self.sock._sock)
+        self.file = self.sock.makefile('rb')
+        return resp
+
+    def ccc(self):
+        '''Switch back to a clear-text control connection.'''
+        if isinstance(self.sock._sock, socket.socket):
+            raise ValueError("not using TLS")
+        resp = self.voidcmd('CCC')
+        self.sock = self.sock.unwrap()
+        return resp
+
+    def prot_p(self):
+        '''Set up secure data connection.'''
+        # PROT defines whether or not the data channel is to be protected.
+        # Though RFC-2228 defines four possible protection levels,
+        # RFC-4217 only recommends two, Clear and Private.
+        # Clear (PROT C) means that no security is to be used on the
+        # data-channel, Private (PROT P) means that the data-channel
+        # should be protected by TLS.
+        # PBSZ command MUST still be issued, but must have a parameter of
+        # '0' to indicate that no buffering is taking place and the data
+        # connection should not be encapsulated.
+        self.voidcmd('PBSZ 0')
+        resp = self.voidcmd('PROT P')
+        self._prot_p = True
+        return resp
+
+    def prot_c(self):
+        '''Set up clear text data connection.'''
+        resp = self.voidcmd('PROT C')
+        self._prot_p = False
+        return resp
+
+    # --- Overridden FTP methods
+
+    def ntransfercmd(self, cmd, rest=None):
+        conn, size = super().ntransfercmd(cmd, rest)
+        if self._prot_p:
+            conn._sock = _ssl.wrap_socket(conn._sock)
+        return conn, size
+
+    def abort(self):
+        # overridden as we can't pass MSG_OOB flag to sendall()
+        line = b'ABOR' + CRLF
+        self.sock.sendall(line)
+        resp = self.getmultiline()
+        if resp[:3] not in {'426', '225', '226'}:
+            raise error_proto(resp)
+        return resp
+    
 def _find_parentheses(s):
     left = s.find('(')
     if left < 0:
@@ -773,3 +894,5 @@ def parse257(resp):
         dirname = dirname + c
 
     return dirname
+
+    all_errors = (Error, OSError, EOFError, ssl.SSLError)
