@@ -24,6 +24,14 @@ Example::
     >>> ftp.quit()
     '221 Goodbye.'
     >>>
+	
+	from ftplib import FTP_TLS
+	ftp = FTP_TLS()
+    ftp.connect('servername', 21)
+    ftp.login('username', 'password')
+    ftp.prot_p()
+	ftp.retrlines('LIST')
+	
 """
 
 # Changes and improvements suggested by Steve Majewski.
@@ -32,6 +40,7 @@ Example::
 # Modified by Phil Schwartz to add storbinary and storlines callbacks.
 # Modified by Giampaolo Rodola' to add TLS support.
 # Modified, stripped down and cleaned up by Christopher Arndt for MicroPython
+# Modified by Alexandru Rusu, added TLS support
 
 import usocket as _socket
 import ssl as _ssl
