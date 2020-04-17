@@ -24,14 +24,7 @@ Example::
     >>> ftp.quit()
     '221 Goodbye.'
     >>>
-	
-	from ftplib import FTP_TLS
-	ftp = FTP_TLS()
-    ftp.connect('servername', 21)
-    ftp.login('username', 'password')
-    ftp.prot_p()
-	ftp.retrlines('LIST')
-	
+
 """
 
 # Changes and improvements suggested by Steve Majewski.
@@ -40,10 +33,9 @@ Example::
 # Modified by Phil Schwartz to add storbinary and storlines callbacks.
 # Modified by Giampaolo Rodola' to add TLS support.
 # Modified, stripped down and cleaned up by Christopher Arndt for MicroPython
-# Modified by Alexandru Rusu, added TLS support
 
 import usocket as _socket
-import ssl as _ssl
+
 # Magic number from <socket.h>
 # Process data out of band
 MSG_OOB = 0x1
@@ -55,7 +47,7 @@ FTP_PORT = 21
 MIN_PORT = 40001
 MAX_PORT = 40100
 # The sizehint parameter passed to readline() calls
-MAXLINE = 8192
+MAXLINE = 2048
 _GLOBAL_DEFAULT_TIMEOUT = object()
 # For compatibility with CPython version with SSL support
 _SSLSocket = None
@@ -78,6 +70,7 @@ def _resolve_addr(addr):
 
     return _socket.getaddrinfo(host, addr[1])
 
+
 class socket:
     def __init__(self, *args, **kw):
         if args and isinstance(args[0], _socket.socket):
@@ -89,8 +82,8 @@ class socket:
         s, addr = self._sock.accept()
         return self.__class__(s), addr
 
-    def sendall(self, *args):
-        return self._sock.send(*args)
+    def sendall(self, data):
+        return self._sock.write(data)
 
     def __getattr__(self, name):
         return getattr(self._sock, name)
@@ -100,6 +93,7 @@ class socket:
 
     def __exit__(self, *args):
         self._sock.close()
+
 
 
 # The main class itself
@@ -113,7 +107,7 @@ class FTP:
     The host, user, passwd and acct arguments are all strings, while port is an
     integer. The default value for all is None, which means the following
     defaults will be used: host: localhost, port: 21, user: 'anonymous',
-    passwd: anonymous@', acct: ''
+    passwd: 'anonymous@', acct: ''
 
     timeout must be numeric and also defaults to None, meaning that no timeout
     will be set on any ftp socket(s). If a timeout is passed, then this is now
@@ -182,12 +176,10 @@ class FTP:
                     self.close()
 
     def _create_connection(self, addr, timeout=None, source_address=None):
-        
         sock = socket()
         addrinfos = _resolve_addr(addr)
         for af, _, _, _, addr in addrinfos:
             try:
-                print("creating connection to", addr)
                 sock.connect(addr)
             except Exception as exc:
                 print(exc)
@@ -297,13 +289,11 @@ class FTP:
 
     def voidcmd(self, cmd):
         """Send a command and expect a response beginning with '2'."""
-        
         self.sock.sendall(cmd.encode(self.encoding) + CRLF)
         return self.voidresp()
 
     def sendport(self, host, port):
-        """Send a PORT command with current host and given port number.
-        """
+        """Send a PORT command with current host and given port number."""
         hbytes = host.split('.')
         pbytes = [repr(port // 256), repr(port % 256)]
         bytes = hbytes + pbytes
@@ -462,7 +452,7 @@ class FTP:
             size = parse150(resp)
         return conn, size
 
-    def login(self, user='', passwd='', acct=''):
+    def login(self, user=None, passwd=None, acct=None):
         """Login, default anonymous."""
         if not user:
             user = 'anonymous'
@@ -510,7 +500,11 @@ class FTP:
         self.sendcmd('TYPE A')
 
         with self.ntransfercmd(cmd)[0] as conn:
-            fp = conn.makefile('rb')
+            if hasattr(conn, 'makefile'):
+                fp = conn.makefile('rb')
+            else:
+                fp = conn._sock
+
             while 1:
                 line = fp.readline(MAXLINE + 1)
 
@@ -681,126 +675,6 @@ class FTP:
                 sock.close()
 
 
-
-
-class FTP_TLS(FTP):
-    '''A FTP subclass which adds TLS support to FTP as described
-    in RFC-4217.
-    Connect as usual to port 21 implicitly securing the FTP control
-    connection before authenticating.
-    Securing the data connection requires user to explicitly ask
-    for it by calling prot_p() method.
-    Usage example:
-    >>> from ftplib import FTP_TLS
-    >>> ftps = FTP_TLS('ftp.python.org')
-    >>> ftps.login()  # login anonymously previously securing control channel
-    '230 Guest login ok, access restrictions apply.'
-    >>> ftps.prot_p()  # switch to secure data connection
-    '200 Protection level set to P'
-    >>> ftps.retrlines('LIST')  # list directory content securely
-    total 9
-    drwxr-xr-x   8 root     wheel        1024 Jan  3  1994 .
-    drwxr-xr-x   8 root     wheel        1024 Jan  3  1994 ..
-    drwxr-xr-x   2 root     wheel        1024 Jan  3  1994 bin
-    drwxr-xr-x   2 root     wheel        1024 Jan  3  1994 etc
-    d-wxrwxr-x   2 ftp      wheel        1024 Sep  5 13:43 incoming
-    drwxr-xr-x   2 root     wheel        1024 Nov 17  1993 lib
-    drwxr-xr-x   6 1094     wheel        1024 Sep 13 19:07 pub
-    drwxr-xr-x   3 root     wheel        1024 Jan  3  1994 usr
-    -rw-r--r--   1 root     root          312 Aug  1  1994 welcome.msg
-    '226 Transfer complete.'
-    >>> ftps.quit()
-    '221 Goodbye.'
-    >>>
-    '''
-    
-    def __init__(self, host='', user='', passwd='', acct='', keyfile=None,
-                    certfile=None, context=None,
-                    timeout=_GLOBAL_DEFAULT_TIMEOUT, source_address=None):
-        if context is not None and keyfile is not None:
-            raise ValueError("context and keyfile arguments are mutually "
-                                "exclusive")
-        if context is not None and certfile is not None:
-            raise ValueError("context and certfile arguments are mutually "
-                                "exclusive")
-        if keyfile is not None or certfile is not None:
-            import warnings
-            warnings.warn("keyfile and certfile are deprecated, use a "
-                            "custom context instead", DeprecationWarning, 2)
-        self.keyfile = keyfile
-        self.certfile = certfile
-        #if context is None:
-        #    context = ssl._create_stdlib_context(self.ssl_version,
-        #                                            certfile=certfile,
-        #                                            keyfile=keyfile)
-        #self.context = context
-        self._prot_p = True #modified it to true
-        secure = True
-        super().__init__(host, user, passwd, acct, timeout, source_address)
-
-    def login(self, user='', passwd='', acct='', secure=True):
-        if secure and isinstance(self.sock._sock, _socket.socket):
-            print("socket unsecured, authenticating")
-            self.auth()
-        return super().login(user, passwd, acct)
-
-    def auth(self):
-        '''Set up secure control connection by using TLS/SSL.'''
-        if not isinstance(self.sock._sock, _socket.socket):
-            raise ValueError("Already using TLS")
-        resp = self.voidcmd('AUTH TLS')
-        print("response of AUTH TLS is", resp)
-        self.sock._sock = _ssl.wrap_socket(self.sock._sock)
-        self.file = self.sock.makefile('rb')
-        return resp
-
-    def ccc(self):
-        '''Switch back to a clear-text control connection.'''
-        if isinstance(self.sock._sock, socket.socket):
-            raise ValueError("not using TLS")
-        resp = self.voidcmd('CCC')
-        self.sock = self.sock.unwrap()
-        return resp
-
-    def prot_p(self):
-        '''Set up secure data connection.'''
-        # PROT defines whether or not the data channel is to be protected.
-        # Though RFC-2228 defines four possible protection levels,
-        # RFC-4217 only recommends two, Clear and Private.
-        # Clear (PROT C) means that no security is to be used on the
-        # data-channel, Private (PROT P) means that the data-channel
-        # should be protected by TLS.
-        # PBSZ command MUST still be issued, but must have a parameter of
-        # '0' to indicate that no buffering is taking place and the data
-        # connection should not be encapsulated.
-        self.voidcmd('PBSZ 0')
-        resp = self.voidcmd('PROT P')
-        self._prot_p = True
-        return resp
-
-    def prot_c(self):
-        '''Set up clear text data connection.'''
-        resp = self.voidcmd('PROT C')
-        self._prot_p = False
-        return resp
-
-    # --- Overridden FTP methods
-
-    def ntransfercmd(self, cmd, rest=None):
-        conn, size = super().ntransfercmd(cmd, rest)
-        if self._prot_p:
-            conn._sock = _ssl.wrap_socket(conn._sock)
-        return conn, size
-
-    def abort(self):
-        # overridden as we can't pass MSG_OOB flag to sendall()
-        line = b'ABOR' + CRLF
-        self.sock.sendall(line)
-        resp = self.getmultiline()
-        if resp[:3] not in {'426', '225', '226'}:
-            raise error_proto(resp)
-        return resp
-    
 def _find_parentheses(s):
     left = s.find('(')
     if left < 0:
@@ -835,12 +709,12 @@ def parse150(resp):
 def parse227(resp):
     """Parse the '227' response for a PASV request.
 
-    Raises error_proto if it does not contain '(h1,h2,h3,h4,p1,p2)'
+    Raises ``Error`` if it does not contain '(h1,h2,h3,h4,p1,p2)'
 
     Return ('host.addr.as.numbers', port#) tuple.
     """
     if not resp.startswith('227'):
-        raise Error("Unexpected response: %s" % resp)
+        raise Error("Unexpected PASV response: %s" % resp)
 
     try:
         left, right = _find_parentheses(resp)
@@ -856,12 +730,12 @@ def parse227(resp):
 def parse229(resp):
     """Parse the '229' response for an EPSV request.
 
-    Raises error_proto if it does not contain '(|||port|)'
+    Raises ``Error`` if it does not contain '(|||port|)'
 
     Return port number as integer.
     """
     if not resp.startswith('229'):
-        raise Error("Unexpected response: %s" % resp)
+        raise Error("Unexpected ESPV response: %s" % resp)
 
     try:
         left, right = _find_parentheses(resp)
@@ -903,5 +777,3 @@ def parse257(resp):
         dirname = dirname + c
 
     return dirname
-
-    all_errors = (Error, OSError, EOFError, ssl.SSLError)

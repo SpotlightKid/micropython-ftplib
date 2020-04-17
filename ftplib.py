@@ -34,9 +34,9 @@ Example::
 # Modified, stripped down and cleaned up by Christopher Arndt for MicroPython
 
 try:
-    import usocket as _socket
-except ImportError:
     import socket as _socket
+except ImportError:
+    import usocket as _socket
 
 __all__ = (
     "Error",
@@ -111,6 +111,7 @@ if getattr(_socket, 'SocketType', None):
     socket = _socket.socket
 else:
     class socket:
+        """Compatibility wrapper."""
         def __init__(self, *args, **kw):
             if args and isinstance(args[0], _socket.socket):
                 self._sock = args[0]
@@ -127,8 +128,17 @@ else:
         def connect(self, addr):
             return self._sock.connect(_resolve_addr(addr))
 
+        def recv(self, size):
+            if hasattr(self._sock, 'recv'):
+                return self._sock.recv(size)
+            else:
+                return self._sock.read(size)
+
         def sendall(self, *args):
-            return self._sock.send(*args)
+            if hasattr(self._sock, 'send'):
+                return self._sock.send(*args)
+            else:
+                return self._sock.write(*args)
 
         def __getattr__(self, name):
             return getattr(self._sock, name)
@@ -264,7 +274,7 @@ class FTP:
         self.sock = self._create_connection((self.host, self.port), timeout,
                                             source_address)
         self.af = self.sock.family
-        self.file = self.sock.makefile('r')
+        self.file = self.sock.makefile('rb')
         self.welcome = self.getresp()
         return self.welcome
 
@@ -321,7 +331,7 @@ class FTP:
     # Internal: return one line from the server, stripping CRLF.
     # Raise EOFError if the connection is closed
     def getline(self):
-        line = self.file.readline(self.maxline + 1)
+        line = self.file.readline(self.maxline + 1).decode()
         if len(line) > self.maxline:
             raise Error("got more than %d bytes" % self.maxline)
         if self.debugging > 1:
@@ -340,7 +350,7 @@ class FTP:
             code = line[:3]
             while 1:
                 nextline = self.getline()
-                line = line + ('\n' + nextline)
+                line = line + (b'\n' + nextline)
                 if nextline[:3] == code and \
                         nextline[3:4] != '-':
                     break
@@ -652,29 +662,35 @@ class FTP:
         self.sendcmd('TYPE A')
 
         with self.transfercmd(cmd) as conn:
-            with conn.makefile('r') as fp:
-                while 1:
-                    line = fp.readline(self.maxline + 1)
+            if hasattr(conn, 'makefile'):
+                fp = conn.makefile('rb')
+            else:
+                fp = conn._sock
 
-                    if not line:
-                        break
+            while 1:
+                line = fp.readline(self.maxline + 1).decode()
 
-                    if len(line) > self.maxline:
-                        raise Error("got more than %d bytes" % self.maxline)
+                if not line:
+                    break
 
-                    if self.debugging > 2:
-                        print('*retr*', repr(line))
+                if len(line) > self.maxline:
+                    raise Error("got more than %d bytes" % self.maxline)
 
-                    if line[-2:] == CRLF:
-                        line = line[:-2]
-                    elif line[-1:] == '\n':
-                        line = line[:-1]
+                if self.debugging > 2:
+                    print('*retr*', repr(line))
 
-                    callback(line)
+                if line[-2:] == CRLF:
+                    line = line[:-2]
+                elif line[-1:] == '\n':
+                    line = line[:-1]
 
-                # shutdown ssl layer
-                if _SSLSocket is not None and isinstance(conn, _SSLSocket):
-                    conn.unwrap()
+                callback(line)
+
+            # shutdown ssl layer
+            if _SSLSocket is not None and isinstance(conn, _SSLSocket):
+                conn.unwrap()
+
+            fp.close()
 
         return self.voidresp()
 
