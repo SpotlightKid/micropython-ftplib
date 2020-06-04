@@ -13,13 +13,14 @@ and the `all_errors` module global variable has been removed. The test code has
 been moved to a separate script and reworked too. The `ftpcp` function has been
 moved to the `ftpcp.py` module file.
 
-The code has been tested only under the *unix* and *esp8266* ports of
+The code has been tested only under the *unix*, *esp8266* and *esp32* ports of
 MicroPython and against the FTP server from the [pyftpdlib] package.
 
 For the *esp8266* port the code needed to be slighty altered to make it work
 with the `ssl` module there and to reduce the memory usage. This version can
-be found in the [esp8266](./esp8266) directory. See the file `README.md` in
-that directory for esp8266-specific instructions.
+be found in the [esp](./esp) directory. See the file `README.md` in that
+directory for esp8266-specific instructions. This version also works with the
+*esp32* port.
 
 
 [ftplib]: https://docs.python.org/3/library/ftplib.html
