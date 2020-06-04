@@ -278,7 +278,7 @@ class FTP:
         resp = self.getmultiline()
 
         if resp[:3] not in {'426', '225', '226'}:
-            raise Error(resp)
+            raise Error("Unexpected ABOR response: %r" % resp)
 
         return resp
 
@@ -523,7 +523,7 @@ class FTP:
 
         return self.voidresp()
 
-    def retrbinary(self, cmd, callback, blocksize=8192, rest=None):
+    def retrbinary(self, cmd, callback, blocksize=2048, rest=None):
         """Retrieve data in binary mode.
 
         A new port is created for you.
@@ -553,7 +553,7 @@ class FTP:
 
         return self.voidresp()
 
-    def storbinary(self, cmd, fp, blocksize=8192, callback=None, rest=None):
+    def storbinary(self, cmd, fp, blocksize=2048, callback=None, rest=None):
         """Store a file in binary mode.
 
         A new port is created for you.

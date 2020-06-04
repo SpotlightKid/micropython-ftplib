@@ -8,30 +8,40 @@ Requires PyOpenSSL module (http://pypi.python.org/pypi/pyOpenSSL).
 
 """
 
+import argparse
+import logging
+
 from pyftpdlib.servers import FTPServer
 from pyftpdlib.authorizers import DummyAuthorizer
 from pyftpdlib.handlers import TLS_FTPHandler
 
 
 def main(args=None):
-    if args:
-        port = int(args[0])
-    else:
-        port = 21
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-p", "--port", type=int, default=21, help="FTP server port (default: %(default)s)")
+    ap.add_argument("-u", "--user", default="joedoe", help="User account name (default: %(default)s)")
+    ap.add_argument("-P", "--password", default="abc123", help="User account password (default: %(default)s)")
+    ap.add_argument("-c", "--certfile", default="keycert.pem", help="Certificate/Keyfile (default: %(default)s)")
+    ap.add_argument("-v", "--verbose", action="store_true", help="Enable verbose (debug) output")
+
+    args = ap.parse_args(args)
+
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
 
     authorizer = DummyAuthorizer()
-    authorizer.add_user('user', '12345', '.', perm='elradfmwMT')
+    authorizer.add_user(args.user, args.password, '.', perm='elradfmwMT')
     authorizer.add_anonymous('.')
     handler = TLS_FTPHandler
-    handler.certfile = 'keycert.pem'
+    handler.certfile = args.certfile
     handler.authorizer = authorizer
     # requires SSL for both control and data channel
     handler.tls_control_required = True
     handler.tls_data_required = True
-    server = FTPServer(('', port), handler)
+    server = FTPServer(('', args.port), handler)
     server.serve_forever()
 
 
 if __name__ == '__main__':
     import sys
-    sys.exit(main(sys.argv[1:]) or 0)
+    sys.exit(main() or 0)

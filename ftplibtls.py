@@ -4,7 +4,7 @@ Example with FTP-over-TLS. Note that you must call the ``prot_b`` method after
 connecting and authentication to actually establish secure communication for
 data transfers::
 
-    >>> from ftplib import FTP_TLS
+    >>> from ftplibtls import FTP_TLS
     >>> ftp = FTP_TLS('servername')  # default port 21
     >>> ftp.login('username', 'password')
     >>> ftp.prot_p()
@@ -12,9 +12,9 @@ data transfers::
 
 If you require server certficate validation (recommended)::
 
-    >>> import ssl
-    >>> from ftplib import FTP_TLS
-    >>> ftp = FTP_TLS(certfile="/path/to/certfile.pem',
+    >>> from ftplib import FTP_TLS, ssl
+    >>> ftp = FTP_TLS(keyfile="/path/to/key.pem"
+                      certfile="/path/to/cert.pem",
                       cert_reqs=ssl.CERT_REQUIRED)
     >>> ...
 
@@ -24,14 +24,10 @@ If you require server certficate validation (recommended)::
 # by Alexandru Rusu and Christopher Arndt
 
 try:
-    import ussl as _ssl
+    import ssl
 except ImportError:
-    import ssl as _ssl
+    import ussl as ssl
 
-try:
-    import socket as _socket
-except ImportError:
-    import usocket as _socket
 
 import ftplib
 
@@ -42,7 +38,7 @@ class FTP_TLS(ftplib.FTP):
     Connect as usual to port 21, implicitly securing the FTP control connection
     before authenticating.
 
-    Securing the data connection requires user the to explicitly ask for it by
+    Securing the data connection requires the user to explicitly ask for it by
     calling the ``prot_p()`` method.
 
     See the module docstring for a usage example.
@@ -50,41 +46,57 @@ class FTP_TLS(ftplib.FTP):
     """
 
     def __init__(self, host=None, port=None, user=None, passwd=None, acct=None,
-                 keyfile=None, certfile=None, cert_reqs=_ssl.CERT_NONE,
+                 keyfile=None, certfile=None, cert_reqs=ssl.CERT_NONE,
                  timeout=ftplib._GLOBAL_DEFAULT_TIMEOUT, source_address=None):
-        if cert_reqs == _ssl.CERT_REQUIRED and certfile is None:
+        if cert_reqs == ssl.CERT_REQUIRED and certfile is None:
             raise ValueError("certfile required for server cert validation.")
 
         self.keyfile = keyfile
         self.certfile = certfile
         self.cert_reqs = cert_reqs
+        self._wrapped = False
         self._prot_p = False
         super().__init__(host, port, user, passwd, acct, timeout, source_address)
 
     def login(self, user=None, passwd=None, acct=None, secure=True):
-        if secure and isinstance(self.sock._sock, _socket.socket):
+        if secure and not self._wrapped:
             self.auth()
         return super().login(user, passwd, acct)
 
     def auth(self):
         """Set up secure control connection by using TLS/SSL."""
-        if not isinstance(self.sock._sock, _socket.socket):
+        if self._wrapped:
             raise ValueError("Already using TLS")
+
         resp = self.voidcmd('AUTH TLS')
-        self.sock._sock = _ssl.wrap_socket(self.sock._sock,
-                                           keyfile=self.keyfile,
-                                           certfile=self.certfile,
-                                           cert_reqs=self.cert_reqs)
-        self.file = self.sock._sock
+        sock = getattr(self.sock, '_sock', None)
+
+        if sock is None:
+            sock = self.sock
+
+        wrapped = ssl.wrap_socket(sock,
+                                  keyfile=self.keyfile,
+                                  certfile=self.certfile,
+                                  cert_reqs=self.cert_reqs)
+
+        if hasattr(self.sock, '_sock'):
+            self.sock._sock = wrapped
+            self.file = self.sock._sock
+        else:
+             self.sock = wrapped
+             self.file = self.sock.makefile('rb')
+
+        self._wrapped = True
         return resp
 
     def ccc(self):
         """Switch back to a clear-text control connection."""
-        if isinstance(self.sock._sock, _socket.socket):
+        if not self._wrapped:
             raise ValueError("not using TLS")
         resp = self.voidcmd('CCC')
         self.sock = self.sock.unwrap()
         self.file = self.sock.makefile('rb')
+        self._wrapped = False
         return resp
 
     def prot_p(self):
@@ -114,14 +126,15 @@ class FTP_TLS(ftplib.FTP):
     def ntransfercmd(self, cmd, rest=None):
         conn, size = super().ntransfercmd(cmd, rest)
         if self._prot_p:
-            conn._sock = _ssl.wrap_socket(conn._sock)
-        return conn, size
+            sock = getattr(conn, '_sock', conn)
+            sock = ssl.wrap_socket(conn,
+                                   keyfile=self.keyfile,
+                                   certfile=self.certfile,
+                                   cert_reqs=self.cert_reqs)
 
-    def abort(self):
-        # overridden as we can't pass MSG_OOB flag to sendall()
-        line = b'ABOR' + CRLF
-        self.sock.sendall(line)
-        resp = self.getmultiline()
-        if resp[:3] not in {'426', '225', '226'}:
-            raise Error("Unexpected ABOR response: %r" % resp)
-        return resp
+            if hasattr(conn, '_sock'):
+                conn._sock = sock
+            else:
+                conn = sock
+
+        return conn, size

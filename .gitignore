@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.mpy
 
 # C extensions
 *.so
@@ -87,3 +88,6 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# test files
+tests/keycert.pem

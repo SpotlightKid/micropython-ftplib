@@ -297,6 +297,7 @@ class FTP:
         2: also print raw lines read and sent before stripping CR/LF
         """
         self.debugging = level
+
     debug = set_debuglevel
 
     def set_pasv(self, val=True):
@@ -398,7 +399,7 @@ class FTP:
         resp = self.getmultiline()
 
         if resp[:3] not in {'426', '225', '226'}:
-            raise error_proto(resp)
+            raise error_proto("Unexpected ABOR response: %r" % resp)
 
         return resp
 
