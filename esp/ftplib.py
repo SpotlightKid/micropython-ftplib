@@ -217,7 +217,11 @@ class FTP:
         self.sock = self._create_connection((self.host, self.port), timeout,
                                             source_address)
         self.af = self.sock.family
-        self.file = self.sock.makefile('rb')
+        if hasattr(self.sock._sock, 'makefile'):
+            self.file = self.sock.makefile('rb')
+        else:
+            self.file = self.sock._sock
+
         self.welcome = self.getresp()
         return self.welcome
 
