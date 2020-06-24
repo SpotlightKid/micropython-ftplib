@@ -8,5 +8,7 @@ files = ftp.nlst()
 print(files)
 
 assert 'test_ftplibtls.py' in files
-assert 'pyftpdlib-tls-server.py' in files
+assert 'pyftpdlib-server.py' in files
 assert 'keycert.pem' in files
+
+print("Ok.")
