@@ -652,29 +652,29 @@ class FTP:
         self.sendcmd('TYPE A')
 
         with self.transfercmd(cmd) as conn:
-            with conn.makefile('r') as fp:
-                while 1:
-                    line = fp.readline(self.maxline + 1)
+            fp = conn.makefile('r')
+            while 1:
+                line = fp.readline(self.maxline + 1)
 
-                    if not line:
-                        break
+                if not line:
+                    break
 
-                    if len(line) > self.maxline:
-                        raise Error("got more than %d bytes" % self.maxline)
+                if len(line) > self.maxline:
+                    raise Error("got more than %d bytes" % self.maxline)
 
-                    if self.debugging > 2:
-                        print('*retr*', repr(line))
+                if self.debugging > 2:
+                    print('*retr*', repr(line))
 
-                    if line[-2:] == CRLF:
-                        line = line[:-2]
-                    elif line[-1:] == '\n':
-                        line = line[:-1]
+                if line[-2:] == CRLF:
+                    line = line[:-2]
+                elif line[-1:] == '\n':
+                    line = line[:-1]
 
-                    callback(line)
+                callback(line)
 
-                # shutdown ssl layer
-                if _SSLSocket is not None and isinstance(conn, _SSLSocket):
-                    conn.unwrap()
+            # shutdown ssl layer
+            if _SSLSocket is not None and isinstance(conn, _SSLSocket):
+                conn.unwrap()
 
         return self.voidresp()
 
