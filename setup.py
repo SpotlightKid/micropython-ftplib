@@ -10,17 +10,30 @@ The 'FTP_SSL' class has been removed completely and so has the 'all_errors'
 module variable. The test code has been moved to a separate script and reworked
 too. The 'ftpcp' function has been moved to the 'ftpcp.py' module.
 
-The code has been tested only under the Unix port of MicroPython so far and
-against the FTP server from the 'pyftpdlib' package.
+A new FTP-over-TLS implementation has been added based on the present
+implementation in teh CPython standard library, but has been extensively
+reworked as well.
+
+The code has been tested under the following MicroPython ports against the FTP
+server from the 'pyftpdlib' package.
+
+* unix
+* stm32 (using W5500 ethernet module)
+* esp8266
+* esp32
+
+For the esp8266 and esp32 port, use the specially adapted modules in the the
+`esp` sub-directory. FTP-over-SSL support for esp32 is currently in alpha
+stage and may or may not actually work, depending on your MicroPython version
+and the amount of available RAM on your board.
 
 """
 
 from setuptools import setup
-#import optimize_upip
 
 setup(
     name='micropython-ftplib',
-    version='0.1.0',
+    version='0.2.0',
     description=__doc__.splitlines()[0],
     long_description="".join(__doc__.splitlines()[2:]),
     url='https://github.com/SpotlightKid/micropython-ftplib',
@@ -28,6 +41,10 @@ setup(
     maintainer='Christopher Arndt',
     maintainer_email='chris@chrisarndt.de',
     license='Python Software Foundation License',
-    #cmdclass={'optimize_upip': optimize_upip.OptimizeUpip},
-    py_modules=['ftplib']
+    py_modules=[
+        'ftpcp',
+        'ftplib',
+        'ftplibtls',
+        'ftpuload',
+    ]
 )
