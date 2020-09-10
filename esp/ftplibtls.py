@@ -111,7 +111,7 @@ class FTP_TLS(ftplib.FTP):
         conn, size = super().ntransfercmd(cmd, rest)
 
         if self._prot_p:
-            conn._sock = self.wrap_socket(conn._sock)
+            conn._sock = self._wrap_socket(conn._sock)
 
         return conn, size
 
