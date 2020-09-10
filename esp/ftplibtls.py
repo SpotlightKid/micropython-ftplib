@@ -53,6 +53,8 @@ class FTP_TLS(ftplib.FTP):
         self._prot_p = False
         self.keyfile = keyfile
         self.certfile = certfile
+        self._keydata = None
+        self._certdata = None
         super().__init__(host, port, user, passwd, acct, timeout, source_address)
 
     def login(self, user=None, passwd=None, acct=None, secure=True):
@@ -116,16 +118,12 @@ class FTP_TLS(ftplib.FTP):
     # Internal helper methods
 
     def _wrap_socket(self, socket):
-        if self.keyfile:
-            with open(self.keyfile, 'rb') as f:
-                keydata = f.read()
-        else:
-            keydata = None
+        if self.keyfile and not self._keydata:
+                with open(self.keyfile, 'rb') as f:
+                    self._keydata = keydata = f.read()
 
-        if self.certfile:
+        if self.certfile and not self._certdata:
             with open(self.certfile, 'rb') as f:
-                certdata = f.read()
-        else:
-            certdata = None
+                self._certdata = certdata = f.read()
 
-        return _ssl.wrap_socket(socket, key=keydata, cert=certdata)
+        return _ssl.wrap_socket(socket, key=self._keydata, cert=self._certdata)
