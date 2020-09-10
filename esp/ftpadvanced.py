@@ -1,5 +1,9 @@
 import ftplib
 
+
+CRLF = '\r\n'
+
+
 class AdvancedFTP(ftplib.FTP):
     def acct(self, password):
         """Send new account name."""
@@ -12,8 +16,7 @@ class AdvancedFTP(ftplib.FTP):
         Defaults to the current directory.
         """
         cmd = 'NLST'
-        for arg in args:
-            cmd = cmd + (' ' + arg)
+        cmd += ' ' + ' '.join(args)
         files = []
         self.retrlines(cmd, files.append)
         return files
@@ -65,8 +68,7 @@ class AdvancedFTP(ftplib.FTP):
 
     # Internal: send one line to the server, appending CRLF
     def putline(self, line):
-        line = line + CRLF
-        self.sock.sendall(line.encode(self.encoding))
+        self.sock.sendall(line.encode(self.encoding) + ftplib.CRLF)
 
     # Internal: send one command to the server (through putline())
     def putcmd(self, line):
@@ -87,22 +89,22 @@ class AdvancedFTP(ftplib.FTP):
           The response code.
         """
         self.voidcmd('TYPE A')
-        with self.transfercmd(cmd)[0] as conn:
+        with self.ntransfercmd(cmd)[0] as conn:
             while 1:
-                buf = fp.readline(MAXLINE + 1)
-                if len(buf) > MAXLINE:
-                    raise Error("got more than %d bytes" % MAXLINE)
+                buf = fp.readline(ftplib.MAXLINE + 1)
+                if len(buf) > ftplib.MAXLINE:
+                    raise Error("got more than %d bytes" % ftplib.MAXLINE)
                 if not buf:
                     break
-                if buf[-2:] != B_CRLF:
-                    if buf[-1] in B_CRLF:
+                if buf[-2:] != CRLF:
+                    if buf[-1] in CRLF:
                         buf = buf[:-1]
-                    buf = buf + B_CRLF
-                conn.sendall(buf)
+                    buf = buf + CRLF
+                conn.sendall(buf.encode(self.encoding))
                 if callback:
                     callback(buf)
             # shutdown ssl layer
-            if _SSLSocket is not None and isinstance(conn, _SSLSocket):
+            if ftplib._SSLSocket is not None and isinstance(conn, ftplib._SSLSocket):
                 conn.unwrap()
 
         return self.voidresp()
