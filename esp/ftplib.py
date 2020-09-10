@@ -538,7 +538,7 @@ class FTP:
                     block of data read.
           blocksize: The maximum number of bytes to read from the
                      socket at one time.  [default: 8192]
-          rest: Passed to transfercmd().  [default: None]
+          rest: Passed to ntransfercmd().  [default: None]
 
         Returns:
           The response code.
@@ -569,7 +569,7 @@ class FTP:
                      the connection at once.  [default: 8192]
           callback: An optional single parameter callable that is called on
                     each block of data after it is sent.  [default: None]
-          rest: Passed to transfercmd().  [default: None]
+          rest: Passed to ntransfercmd().  [default: None]
 
         Returns:
           The response code.
