@@ -90,4 +90,7 @@ ENV/
 .ropeproject
 
 # test files
+tests/cert.pem
 tests/keycert.pem
+tests/key.pem
+tests/ftproot
