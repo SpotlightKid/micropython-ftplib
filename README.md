@@ -18,8 +18,7 @@ MicroPython and against the FTP server from the [pyftpdlib] package.
 
 For the *esp8266* port the code needed to be slighty altered to make it work
 with the `ssl` module there and to reduce the memory usage. This version can
-be found in the [esp](./esp) directory. See the file `README.md` in that
-directory for esp8266-specific instructions. This version also works with the
+be found in the [esp](./esp) directory. This version also works with the
 *esp32* port.
 
 
