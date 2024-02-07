@@ -91,6 +91,7 @@ ENV/
 
 # test files
 tests/cert.pem
+tests/cert.der
 tests/keycert.pem
 tests/key.pem
-tests/ftproot
+tests/ftproot/

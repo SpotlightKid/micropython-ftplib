@@ -46,17 +46,23 @@ class FTP_TLS(ftplib.FTP):
     """
 
     def __init__(self, host=None, port=None, user=None, passwd=None, acct=None,
-                 keyfile=None, certfile=None, cert_reqs=ssl.CERT_NONE,
-                 timeout=ftplib._GLOBAL_DEFAULT_TIMEOUT, source_address=None):
-        if cert_reqs == ssl.CERT_REQUIRED and certfile is None:
-            raise ValueError("certfile required for server cert validation.")
-
-        self.keyfile = keyfile
-        self.certfile = certfile
-        self.cert_reqs = cert_reqs
+                 timeout=ftplib._GLOBAL_DEFAULT_TIMEOUT, source_address=None,
+                 ssl_context=None, server_hostname=None):
+        self.ssl_context = ssl_context
+        self.server_hostname = server_hostname
         self._wrapped = False
         self._prot_p = False
         super().__init__(host, port, user, passwd, acct, timeout, source_address)
+
+    def _wrap_socket(self, sock):
+        if self.ssl_context is None:
+            if hasattr(ssl, 'create_default_context'):
+                self.ssl_context = ssl.create_default_context()
+            else:
+                self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                self.ssl_context.verify_mode = ssl.CERT_OPTIONAL
+
+        return self.ssl_context.wrap_socket(sock, server_hostname=self.server_hostname or self.host)
 
     def login(self, user=None, passwd=None, acct=None, secure=True):
         if secure and not self._wrapped:
@@ -74,10 +80,7 @@ class FTP_TLS(ftplib.FTP):
         if sock is None:
             sock = self.sock
 
-        wrapped = ssl.wrap_socket(sock,
-                                  keyfile=self.keyfile,
-                                  certfile=self.certfile,
-                                  cert_reqs=self.cert_reqs)
+        wrapped = self._wrap_socket(sock)
 
         if hasattr(self.sock, '_sock'):
             self.sock._sock = wrapped
@@ -126,11 +129,7 @@ class FTP_TLS(ftplib.FTP):
     def ntransfercmd(self, cmd, rest=None):
         conn, size = super().ntransfercmd(cmd, rest)
         if self._prot_p:
-            sock = getattr(conn, '_sock', conn)
-            sock = ssl.wrap_socket(conn,
-                                   keyfile=self.keyfile,
-                                   certfile=self.certfile,
-                                   cert_reqs=self.cert_reqs)
+            sock = self._wrap_socket(getattr(conn, '_sock', conn))
 
             if hasattr(conn, '_sock'):
                 conn._sock = sock
