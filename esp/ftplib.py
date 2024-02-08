@@ -182,6 +182,9 @@ class FTP:
                 sock.settimeout(timeout)
 
             try:
+                if source_address:
+                    sock.bind(_socket.getaddrinfo(source_address[0], source_address[1], af,
+                                                  _socket.SOCK_STREAM)[0][-1])
                 sock.connect(ai)
             except Exception as exc:
                 if self.debugging:
