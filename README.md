@@ -24,11 +24,48 @@ server from the [pyftpdlib] package.
 
 For the *esp8266* port the code needed to be slighty altered to make it work
 with the `ssl` module there and to reduce the memory usage. This version can
-be found in the [esp](./esp) directory. This version also works with the
-*esp32* port.
+be found in the [esp](./esp) directory (this version also works with the
+*esp32* port, but there you should be able to use the normal version too).
 
 
-## Testing FTP over TLS
+## FTP over TLS
+
+FTP-over-TLS support is available in a separate `ftplibtls` module:
+
+```
+>>> from ftplibtls import FTP_TLS
+>>> ftp = FTP_TLS('example.com')  # default port 21
+>>> ftp.login('username', 'password')
+>>> ftp.prot_p()
+>>> ftp.retrlines('LIST')
+```
+
+Note that you must call the `prot_b` method after connecting and
+authentication to actually establish secure communication for data transfers.
+
+If you require server certficate validation (recommended)::
+
+```
+>>> from ftplib import FTP_TLS, ssl
+>>> ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+>>> ctx.verify_mode = ssl.CERT_REQUIRED
+>>> ctx.load_verify_locations(cafile="cert.der")  # Certificate file must be in DER format
+>>> ftp = FTP_TLS(ssl_context=ctx, server_hostname="example.com")
+>>> ftp.connect('example.com')
+>>> ftp.prot_p()
+>>> ftp.retrlines('LIST')
+```
+
+Use the `server_hostname` constructor argument if the common name in the
+server's certificate differs from the host name used for connecting.
+
+Note: the version of `ftplibtls` in the `esp` directory does not support the
+`ssl_context` and `server_hostname` constructor arguments, since the `ssl`
+module of the esp2866 port unfortunately does not support server certificate
+validation.
+
+
+### Testing FTP over TLS
 
 The `tests` directory contains the `pyftplib-server.py` script to start an FTP
 server, which is based on the [pyftpdlib] library for CPython and which
