@@ -94,17 +94,17 @@ def _resolve_addr(addr):
     if isinstance(addr, (bytes, bytearray)):
         return addr
 
-    family = _socket.AF_INET
+    af = _socket.AF_INET
 
     if len(addr) != 2:
         family = _socket.AF_INET6
 
     if not addr[0]:
-        host = "127.0.0.1" if family == _socket.AF_INET else "::1"
+        host = "127.0.0.1" if af == _socket.AF_INET else "::1"
     else:
         host = addr[0]
 
-    return _socket.getaddrinfo(host, addr[1], family)
+    return _socket.getaddrinfo(host, addr[1], af, _socket.SOCK_STREAM)
 
 
 if getattr(_socket, 'SocketType', None):
@@ -121,12 +121,6 @@ else:
         def accept(self):
             s, addr = self._sock.accept()
             return self.__class__(s), addr
-
-        def bind(self, addr):
-            return self._sock.bind(_resolve_addr(addr))
-
-        def connect(self, addr):
-            return self._sock.connect(_resolve_addr(addr))
 
         def recv(self, size):
             if hasattr(self._sock, 'recv'):
@@ -232,17 +226,19 @@ class FTP:
                     self.close()
 
     def _create_connection(self, addr, timeout=None, source_address=None):
-        sock = socket()
-        addrinfos = _resolve_addr(addr)
-        for af, _, _, _, addr in addrinfos:
+        for af, atype, proto, _, ai in _resolve_addr(addr):
+            sock = socket(af, atype, proto)
+            if timeout and timeout is not _GLOBAL_DEFAULT_TIMEOUT:
+                sock.settimeout(timeout)
+
             try:
-                sock.connect(addr)
+                sock.connect(ai)
             except Exception as exc:
                 if self.debugging:
                     print(exc)
+                sock.close()
+                sock = None
             else:
-                if timeout and timeout is not _GLOBAL_DEFAULT_TIMEOUT:
-                    sock.settimeout(timeout)
                 try:
                     sock.family = af
                 except:
@@ -449,13 +445,11 @@ class FTP:
             host = "127.0.0.1" if self.af == _socket.AF_INET else "::1"
 
         for port in range(MIN_PORT, MAX_PORT):
-            addrinfo = _socket.getaddrinfo(host, port, self.af)
-
-            for af, socktype, proto, _, addr in addrinfo:
-                if af == self.af and socktype == _socket.SOCK_STREAM:
+            for af, atype, proto, _, ai in _socket.getaddrinfo(host, port, self.af, _socket.SOCK_STREAM):
+                if af == self.af and atype == _socket.SOCK_STREAM:
                     try:
-                        sock = socket(af, socktype, proto)
-                        sock.bind(addr)
+                        sock = socket(af, atype, proto)
+                        sock.bind(ai)
                     except OSError as _:
                         err = _
                         if sock:
@@ -468,13 +462,13 @@ class FTP:
                         except:
                             pass
 
-                        if isinstance(addr, tuple):
-                            host = addr[0]
+                        if isinstance(ai, tuple):
+                            host = ai[0]
                         else:
                             try:
                                 # XXX: socket.inet_ntop() is not supported on
                                 # all MicroPython ports!
-                                host = _socket.inet_ntop(af, addr[4:8])
+                                host = _socket.inet_ntop(af, ai[4:8])
                             except:
                                 pass
                         break

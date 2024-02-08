@@ -37,19 +37,16 @@ class FTP_TLS(ftplib.FTP):
     Securing the data connection requires the user to explicitly ask for it by
     calling the ``prot_p()`` method.
 
-    The ``ssl`` module of the ESP8266 port of MicroPython does not support
-    certficate validation, so the following instantiation argument is
-    ignored:
-
-    * ``cert_reqs``
+    Note: the ``ssl`` module of the ESP8266 port of MicroPython does not support
+    server certficate validation!
 
     See the module docstring for a usage example.
 
     """
 
     def __init__(self, host=None, port=None, user=None, passwd=None, acct=None,
-                 keyfile=None, certfile=None, cert_reqs=None,
-                 timeout=ftplib._GLOBAL_DEFAULT_TIMEOUT, source_address=None):
+                 timeout=ftplib._GLOBAL_DEFAULT_TIMEOUT, source_address=None,
+                 keyfile=None, certfile=None):
         self._prot_p = False
         self.keyfile = keyfile
         self.certfile = certfile
@@ -117,13 +114,13 @@ class FTP_TLS(ftplib.FTP):
 
     # Internal helper methods
 
-    def _wrap_socket(self, socket):
+    def _wrap_socket(self, sock):
         if self.keyfile and not self._keydata:
-                with open(self.keyfile, 'rb') as f:
-                    self._keydata = keydata = f.read()
+            with open(self.keyfile, 'rb') as f:
+                self._keydata = f.read()
 
         if self.certfile and not self._certdata:
             with open(self.certfile, 'rb') as f:
-                self._certdata = certdata = f.read()
+                self._certdata = f.read()
 
-        return _ssl.wrap_socket(socket, key=self._keydata, cert=self._certdata)
+        return _ssl.wrap_socket(sock, key=self._keydata, cert=self._certdata)

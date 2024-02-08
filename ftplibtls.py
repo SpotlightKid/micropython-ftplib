@@ -5,7 +5,7 @@ connecting and authentication to actually establish secure communication for
 data transfers::
 
     >>> from ftplibtls import FTP_TLS
-    >>> ftp = FTP_TLS('servername')  # default port 21
+    >>> ftp = FTP_TLS('example.com')  # default port 21
     >>> ftp.login('username', 'password')
     >>> ftp.prot_p()
     >>> ftp.retrlines('LIST')
@@ -13,10 +13,16 @@ data transfers::
 If you require server certficate validation (recommended)::
 
     >>> from ftplib import FTP_TLS, ssl
-    >>> ftp = FTP_TLS(keyfile="/path/to/key.pem"
-                      certfile="/path/to/cert.pem",
-                      cert_reqs=ssl.CERT_REQUIRED)
-    >>> ...
+    >>> ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    >>> ctx.verify_mode = ssl.CERT_REQUIRED
+    >>> ctx.load_verify_locations(cafile="cert.der")  # Certificate file must be in DER format
+    >>> ftp = FTP_TLS(ssl_context=ctx, server_hostname="example.com")
+    >>> ftp.connect('example.com')
+    >>> ftp.prot_p()
+    >>> ftp.retrlines('LIST')
+
+Use the ``server_hostname`` constructor argument if the common name in the
+server's certificate differs from the host name used for connecting.
 
 """
 

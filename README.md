@@ -13,8 +13,14 @@ and the `all_errors` module global variable has been removed. The test code has
 been moved to a separate script and reworked too. The `ftpcp` function has been
 moved to the `ftpcp.py` module file.
 
-The code has been tested only under the *unix*, *esp8266* and *esp32* ports of
-MicroPython and against the FTP server from the [pyftpdlib] package.
+The code has been tested under the following MicroPython ports against the FTP
+server from the [pyftpdlib] package.
+
+* unix
+* stm32 (using W5500 ethernet module)
+* esp8266
+* esp32
+* rp2 (Raspberry Pi Pico W)
 
 For the *esp8266* port the code needed to be slighty altered to make it work
 with the `ssl` module there and to reduce the memory usage. This version can
@@ -25,7 +31,7 @@ be found in the [esp](./esp) directory. This version also works with the
 ## Testing FTP over TLS
 
 The `tests` directory contains the `pyftplib-server.py` script to start an FTP
-server, which is based on the [pyftplib] library for CPython and which
+server, which is based on the [pyftpdlib] library for CPython and which
 supports FTP over TLS.
 
 To run this script with TLS support enabled, you first need to create a server
