@@ -16,23 +16,23 @@ moved to the `ftpcp.py` module file.
 The code has been tested under the following MicroPython ports against the FTP
 server from the [pyftpdlib] package.
 
-* unix
-* stm32 (using W5500 ethernet module)
-* esp8266
-* esp32
-* rp2 (Raspberry Pi Pico W)
+* `unix`
+* `stm32` (using W5500 ethernet module)
+* `esp8266`
+* `esp32`
+* `rp2` (Raspberry Pi Pico W)
 
-For the *esp8266* port the code needed to be slighty altered to make it work
+For the `esp8266` port the code needed to be slighty altered to make it work
 with the `ssl` module there and to reduce the memory usage. This version can
 be found in the [esp](./esp) directory (this version also works with the
-*esp32* port, but there you should be able to use the normal version too).
+`esp32` port, but there you should be able to use the normal version too).
 
 
 ## FTP over TLS
 
 FTP-over-TLS support is available in a separate `ftplibtls` module:
 
-```
+```py
 >>> from ftplibtls import FTP_TLS
 >>> ftp = FTP_TLS('example.com')  # default port 21
 >>> ftp.login('username', 'password')
@@ -43,9 +43,9 @@ FTP-over-TLS support is available in a separate `ftplibtls` module:
 Note that you must call the `prot_b` method after connecting and
 authentication to actually establish secure communication for data transfers.
 
-If you require server certficate validation (recommended)::
+If you require server certificate validation (recommended):
 
-```
+```py
 >>> from ftplib import FTP_TLS, ssl
 >>> ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 >>> ctx.verify_mode = ssl.CERT_REQUIRED
@@ -61,7 +61,7 @@ server's certificate differs from the host name used for connecting.
 
 Note: the version of `ftplibtls` in the `esp` directory does not support the
 `ssl_context` and `server_hostname` constructor arguments, since the `ssl`
-module of the esp2866 port unfortunately does not support server certificate
+module of the `esp2866` port unfortunately does not support server certificate
 validation.
 
 
@@ -75,35 +75,45 @@ To run this script with TLS support enabled, you first need to create a server
 certificate. For testing, a self-signed certificate can be used and created
 with:
 
-    openssl req -new -x509 -nodes -out cert.pem -keyout tests/key.pem
+```con
+openssl req -new -x509 -nodes -out cert.pem -keyout tests/key.pem
+```
 
 Specify the country, code, location, organization and common name, when
 prompted. (Note: the test scripts in the `tests` directory assume that the
 common name you choose is `example.com`. If you choose a different common name,
-these scripts will fail with an error due to certificte verification failure.)
+these scripts will fail with an error due to certificate verification failure.)
 
 Combine the server certificate and the key into one file:
 
-    cat tests/key.pem tests/cert.pem > tests/keycert.pem
+```con
+cat tests/key.pem tests/cert.pem > tests/keycert.pem
+```
 
 The `ftplibtls` module needs the server certificate in DER format, so convert
 it with:
 
-    openssl x509 -in tests/cert.pem -out tests/cert.der -outform DER
+```con
+openssl x509 -in tests/cert.pem -out tests/cert.der -outform DER
+```
 
 Now you can start the test FTP server:
 
-    mkdir -p tests/ftproot
-    python3 tests/pyftpdlib-server.py -w -s -p 2121 -c tests/keycert.pem tests/ftproot
+```con
+mkdir -p tests/ftproot
+python3 tests/pyftpdlib-server.py -w -s -p 2121 -c tests/keycert.pem tests/ftproot
+```
 
 The FTP server will listen on port 2121, support TLS using the certificate in the
-file 'tests/keycert.pem` and allow clients to read files from the direcory
+file `tests/keycert.pem` and allow clients to read files from the directory
 `tests/ftproot` and also upload files there.
 
 To upload a file to the test FTP server using the `ftplibtls` module, run the
 `tests/test_upload.py` script:
 
-    MICROPYPATH=`pwd` micropython tests/test_upload.py ftps://localhost:2121 <filename>
+```con
+MICROPYPATH=`pwd` micropython tests/test_upload.py ftps://localhost:2121 <filename>
+```
 
 This should upload the file `<filename>` to the FTP server using FTP over TLS
 and the file should appear in the `tests/ftproot` directory.
