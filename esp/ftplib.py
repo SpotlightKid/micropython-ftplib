@@ -34,7 +34,10 @@ Example::
 # Modified by Giampaolo Rodola' to add TLS support.
 # Modified, stripped down and cleaned up by Christopher Arndt for MicroPython
 
-import usocket as _socket
+try:
+    import socket as _socket
+except ImportError:
+    import usocket as _socket
 
 # Magic number from <socket.h>
 # Process data out of band
