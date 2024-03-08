@@ -75,6 +75,7 @@ def _resolve_addr(addr):
 
 
 class socket:
+    """Compatibility wrapper."""
     def __init__(self, *args, **kw):
         if args and isinstance(args[0], _socket.socket):
             self._sock = args[0]
@@ -85,8 +86,17 @@ class socket:
         s, addr = self._sock.accept()
         return self.__class__(s), addr
 
-    def sendall(self, data):
-        return self._sock.write(data)
+    def recv(self, size):
+        if hasattr(self._sock, 'recv'):
+            return self._sock.recv(size)
+        else:
+            return self._sock.read(size)
+
+    def sendall(self, *args):
+        if hasattr(self._sock, 'send'):
+            return self._sock.send(*args)
+        else:
+            return self._sock.write(*args)
 
     def __getattr__(self, name):
         return getattr(self._sock, name)
