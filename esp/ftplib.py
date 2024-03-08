@@ -187,8 +187,6 @@ class FTP:
                                                   _socket.SOCK_STREAM)[0][-1])
                 sock.connect(ai)
             except Exception as exc:
-                if self.debugging:
-                    print(exc)
                 sock.close()
                 sock = None
             else:
