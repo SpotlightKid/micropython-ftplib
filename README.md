@@ -76,7 +76,7 @@ certificate. For testing, a self-signed certificate can be used and created
 with:
 
 ```con
-openssl req -new -x509 -nodes -out cert.pem -keyout tests/key.pem
+openssl req -new -x509 -nodes -out tests/cert.pem -keyout tests/key.pem
 ```
 
 Specify the country, code, location, organization and common name, when
