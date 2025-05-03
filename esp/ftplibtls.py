@@ -16,7 +16,7 @@ data transfers::
 # by Alexandru Rusu and Christopher Arndt
 
 try:
-    import _ssl
+    import ssl as _ssl
 except ImportError:
     import ussl as _ssl
 

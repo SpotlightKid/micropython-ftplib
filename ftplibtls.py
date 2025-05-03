@@ -30,10 +30,12 @@ server's certificate differs from the host name used for connecting.
 # by Alexandru Rusu and Christopher Arndt
 
 try:
-    import ssl
+    import tls as ssl
 except ImportError:
-    import ussl as ssl
-
+    try:
+        import ssl
+    except ImportError:
+        import ussl as ssl
 
 import ftplib
 
