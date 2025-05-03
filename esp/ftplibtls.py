@@ -16,9 +16,12 @@ data transfers::
 # by Alexandru Rusu and Christopher Arndt
 
 try:
-    import ssl as _ssl
+    import tls as ssl
 except ImportError:
-    import ussl as _ssl
+    try:
+        import ssl
+    except ImportError:
+        import ussl as ssl
 
 try:
     import socket as _socket
@@ -123,4 +126,4 @@ class FTP_TLS(ftplib.FTP):
             with open(self.certfile, 'rb') as f:
                 self._certdata = f.read()
 
-        return _ssl.wrap_socket(sock, key=self._keydata, cert=self._certdata)
+        return ssl.wrap_socket(sock, key=self._keydata, cert=self._certdata)
