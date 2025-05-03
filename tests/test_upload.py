@@ -24,7 +24,16 @@ def upload_file(host, filename, remote_name=None, debuglevel=1):
         else:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             ctx.verify_mode = ssl.CERT_REQUIRED
-            ctx.load_verify_locations(cafile="tests/cert.der")
+            cafile = "tests/cert.der"
+            try:
+                ctx.load_verify_locations(ccafile=cafile)
+            except TypeError:
+                with open(cafile, "rb") as cert:
+                    cadata = cert.read()
+                    try:
+                        ctx.load_verify_locations(cadata=cadata)
+                    except TypeError:
+                        ctx.load_verify_locations(cadata)
 
         ftp = FTP_TLS(ssl_context=ctx, server_hostname="example.com")
     else:
