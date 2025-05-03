@@ -350,7 +350,7 @@ class FTP:
             code = line[:3]
             while 1:
                 nextline = self.getline()
-                line = line + (b'\n' + nextline)
+                line += '\n' + nextline
                 if nextline[:3] == code and \
                         nextline[3:4] != '-':
                     break
