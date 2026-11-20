@@ -190,7 +190,7 @@ class FTP:
     file = None
     welcome = None
     passiveserver = 1
-    encoding = "latin-1"
+    encoding = "utf-8"
 
     def __init__(self, host=None, port=None, user=None, passwd=None, acct=None,
                  timeout=_GLOBAL_DEFAULT_TIMEOUT, source_address=None):
